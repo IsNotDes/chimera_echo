@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-use bevy::input::mouse::MouseMotion;
 use bevy::window::{CursorGrabMode, PrimaryWindow};
 use std::f32::consts::FRAC_PI_2;
 
@@ -13,8 +12,8 @@ impl Default for Player {
     fn default() -> Self {
         Self {
             speed: 5.0,
-            // Lowered sensitivity for sane mouse look
-            sensitivity: 0.002,
+            // Reasonable sensitivity for smooth mouse look
+            sensitivity: 0.5,
         }
     }
 }
@@ -42,16 +41,15 @@ pub fn setup_camera_controller(
 
     // Auto-grab cursor
     if let Ok(mut window) = window_query.get_single_mut() {
-        window.cursor.grab_mode = CursorGrabMode::Locked;
-        window.cursor.visible = false;
+        window.cursor_options.grab_mode = CursorGrabMode::Locked;
+        window.cursor_options.visible = false;
     }
 }
 
-// Corrected movement system
+// Movement system
 pub fn move_camera(
     time: Res<Time>,
-    input: Res<Input<KeyCode>>,
-    // Query for the controller to get the yaw for horizontal movement
+    input: Res<ButtonInput<KeyCode>>,
     mut query: Query<(&mut Transform, &Player, &CameraController)>,
 ) {
     for (mut transform, player, controller) in query.iter_mut() {
@@ -59,20 +57,20 @@ pub fn move_camera(
 
         // Calculate forward/right vectors based on yaw, ignoring pitch
         let (yaw_sin, yaw_cos) = controller.yaw.sin_cos();
-        let forward = Vec3::new(-yaw_sin, 0.0, -yaw_cos);
+        let forward = Vec3::new(yaw_sin, 0.0, yaw_cos);
         let right = Vec3::new(yaw_cos, 0.0, -yaw_sin);
 
         // AZERTY + QWERTY support
-        if input.pressed(KeyCode::W) || input.pressed(KeyCode::Z) {
+        if input.pressed(KeyCode::KeyW) || input.pressed(KeyCode::KeyZ) {
             direction += forward;
         }
-        if input.pressed(KeyCode::S) {
+        if input.pressed(KeyCode::KeyS) {
             direction -= forward;
         }
-        if input.pressed(KeyCode::A) || input.pressed(KeyCode::Q) {
+        if input.pressed(KeyCode::KeyA) || input.pressed(KeyCode::KeyQ) {
             direction -= right;
         }
-        if input.pressed(KeyCode::D) {
+        if input.pressed(KeyCode::KeyD) {
             direction += right;
         }
         if input.pressed(KeyCode::Space) {
@@ -83,49 +81,54 @@ pub fn move_camera(
         }
 
         if direction.length_squared() > 0.0 {
-            transform.translation += direction.normalize() * player.speed * time.delta_seconds();
+            transform.translation += direction.normalize() * player.speed * time.delta_secs();
         }
     }
 }
 
-// Corrected look_around system
+// Cursor position-based mouse look system
 pub fn look_around(
-    mut mouse_motion: EventReader<MouseMotion>,
+    window_query: Query<&Window, With<PrimaryWindow>>,
     mut query: Query<(&mut Transform, &Player, &mut CameraController)>,
 ) {
-    for (mut transform, player, mut controller) in query.iter_mut() {
-        let mut delta = Vec2::ZERO;
-        for motion in mouse_motion.read() {
-            delta += motion.delta;
-        }
-
-        if delta.length_squared() > 0.0 {
-            controller.yaw -= delta.x * player.sensitivity;
-            controller.pitch -= delta.y * player.sensitivity;
-
-            // Clamp pitch to prevent looking straight up or down
-            controller.pitch = controller.pitch.clamp(-FRAC_PI_2 + 0.001, FRAC_PI_2 - 0.001);
-
-            transform.rotation = Quat::from_axis_angle(Vec3::Y, controller.yaw)
-                * Quat::from_axis_angle(Vec3::X, controller.pitch);
+    if let Ok(window) = window_query.get_single() {
+        if let Some(cursor_pos) = window.cursor_position() {
+            let window_size = Vec2::new(window.width(), window.height());
+            let center = window_size / 2.0;
+            
+            // Calculate offset from center
+            let offset = cursor_pos - center;
+            
+            for (mut transform, player, mut controller) in query.iter_mut() {
+                // Convert cursor position to rotation angles
+                controller.yaw = -offset.x * player.sensitivity * 0.01;
+                controller.pitch = -offset.y * player.sensitivity * 0.01;
+                
+                // Clamp pitch to prevent looking straight up or down
+                controller.pitch = controller.pitch.clamp(-FRAC_PI_2 + 0.1, FRAC_PI_2 - 0.1);
+                
+                // Apply rotation
+                transform.rotation = Quat::from_axis_angle(Vec3::Y, controller.yaw)
+                    * Quat::from_axis_angle(Vec3::X, controller.pitch);
+            }
         }
     }
 }
 
 pub fn cursor_grab(
-    mouse_button_input: Res<Input<MouseButton>>,
+    mouse_button_input: Res<ButtonInput<MouseButton>>,
     mut window_query: Query<&mut Window, With<PrimaryWindow>>,
 ) {
     if let Ok(mut window) = window_query.get_single_mut() {
         if mouse_button_input.just_pressed(MouseButton::Left) {
-            window.cursor.grab_mode = CursorGrabMode::Locked;
-            window.cursor.visible = false;
+            window.cursor_options.grab_mode = CursorGrabMode::Locked;
+            window.cursor_options.visible = false;
         }
     }
 }
 
 pub fn debug_camera_info(
-    input: Res<Input<KeyCode>>,
+    input: Res<ButtonInput<KeyCode>>,
     query: Query<(&Transform, &CameraController)>,
 ) {
     if input.just_pressed(KeyCode::F1) {

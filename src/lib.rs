@@ -8,8 +8,8 @@ use std::time::Duration;
 use crossterm::{execute, terminal::{Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen}, style::{Print, SetForegroundColor, Color as CrosstermColor}};
 
 use intro::{type_text, glitch_screen};
-use movement::{move_camera, look_around, cursor_grab, setup_camera_controller, debug_camera_info};
-use setup::setup;
+use movement::{move_camera, look_around, cursor_grab, debug_camera_info};
+use setup::{setup, setup_cursor_grab};
 
 pub fn run() -> io::Result<()> {
     // Check for debug flag to skip intro
@@ -81,13 +81,14 @@ pub fn run() -> io::Result<()> {
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Chimera//Echo".into(),
-                mode: bevy::window::WindowMode::BorderlessFullscreen,
+                mode: bevy::window::WindowMode::BorderlessFullscreen(bevy::window::MonitorSelection::Current),
                 ..default()
             }),
             ..default()
         }))
-        .add_systems(Startup, (setup, setup_camera_controller).chain())
-        .add_systems(Update, (move_camera, cursor_grab, look_around, debug_camera_info).chain())
+        .add_systems(Startup, setup)
+        .add_systems(PostStartup, setup_cursor_grab)
+        .add_systems(Update, (move_camera, cursor_grab, look_around, debug_camera_info))
         .run();
 
     Ok(())
